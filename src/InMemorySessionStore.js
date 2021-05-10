@@ -1,187 +1,58 @@
-/*!
- * express-session (copy)
- * Copyright(c) 2010 Sencha Inc.
- * Copyright(c) 2011 TJ Holowaychuk
- * Copyright(c) 2015 Douglas Christopher Wilson
- * MIT Licensed
- */
+const ISessionStore = require("./ISessionStore");
 
-'use strict';
-
-/**
- * Module dependencies.
- * @private
- */
-
-var Store = require('./store')
-var util = require('util')
-
-/**
- * Shim setImmediate for node.js < 0.10
- * @private
- */
-
-/* istanbul ignore next */
-var defer = typeof setImmediate === 'function'
-  ? setImmediate
-  : function(fn){ process.nextTick(fn.bind.apply(fn, arguments)) }
-
-/**
- * Module exports.
- */
-
-module.exports = InMemorySessionStore
-
-/**
- * A session store in memory.
- * @public
- */
-
-function InMemorySessionStore() {
-  Store.call(this)
-  this.sessions = Object.create(null)
-}
-
-/**
- * Inherit from Store.
- */
-
-util.inherits(InMemorySessionStore, Store)
-
-/**
- * Get all active sessions.
- *
- * @param {function} callback
- * @public
- */
-
-InMemorySessionStore.prototype.all = function all(callback) {
-  var sessionIds = Object.keys(this.sessions)
-  var sessions = Object.create(null)
-
-  for (var i = 0; i < sessionIds.length; i++) {
-    var sessionId = sessionIds[i]
-    var session = getSession.call(this, sessionId)
-
-    if (session) {
-      sessions[sessionId] = session;
+class InMemorySessionStore extends ISessionStore {
+  /**
+   * @param {Object} config
+   * @param {Number} config.ttl
+   */
+  constructor(config) {
+    super();
+    this.config = { ttl: 1000 * 30 * 60, ...config };
+    this.store = {};
+    this.get = this.get.bind(this);
+    this.set = this.set.bind(this);
+    this.destroy = this.destroy.bind(this);
+    this.worker = this.worker.call(this);
+    this.targetTTL = this.config.ttl;
+  }
+  async worker() {
+    const _self = this;
+    while (true) {
+      var now = new Date();
+      for (var k in this.store) {
+        var v = this.store[k];
+        if (!v.ttl | v.ttl < now) {
+          delete this.store[k];
+        }
+      }
+      await new Promise((resolve) => {
+        setTimeout(resolve, _self.targetTTL);
+      });
     }
   }
-
-  callback && defer(callback, null, sessions)
-}
-
-/**
- * Clear all sessions.
- *
- * @param {function} callback
- * @public
- */
-
-InMemorySessionStore.prototype.clear = function clear(callback) {
-  this.sessions = Object.create(null)
-  callback && defer(callback)
-}
-
-/**
- * Destroy the session associated with the given session ID.
- *
- * @param {string} sessionId
- * @public
- */
-
-InMemorySessionStore.prototype.destroy = function destroy(sessionId, callback) {
-  delete this.sessions[sessionId]
-  callback && defer(callback)
-}
-
-/**
- * Fetch session by the given session ID.
- *
- * @param {string} sessionId
- * @param {function} callback
- * @public
- */
-
-InMemorySessionStore.prototype.get = function get(sessionId, callback) {
-  defer(callback, null, getSession.call(this, sessionId))
-}
-
-/**
- * Commit the given session associated with the given sessionId to the store.
- *
- * @param {string} sessionId
- * @param {object} session
- * @param {function} callback
- * @public
- */
-
-InMemorySessionStore.prototype.set = function set(sessionId, session, callback) {
-  this.sessions[sessionId] = JSON.stringify(session)
-  callback && defer(callback)
-}
-
-/**
- * Get number of active sessions.
- *
- * @param {function} callback
- * @public
- */
-
-InMemorySessionStore.prototype.length = function length(callback) {
-  this.all(function (err, sessions) {
-    if (err) return callback(err)
-    callback(null, Object.keys(sessions).length)
-  })
-}
-
-/**
- * Touch the given session object associated with the given session ID.
- *
- * @param {string} sessionId
- * @param {object} session
- * @param {function} callback
- * @public
- */
-
-InMemorySessionStore.prototype.touch = function touch(sessionId, session, callback) {
-  var currentSession = getSession.call(this, sessionId)
-
-  if (currentSession) {
-    // update expiration
-    currentSession.cookie = session.cookie
-    this.sessions[sessionId] = JSON.stringify(currentSession)
-  }
-
-  callback && defer(callback)
-}
-
-/**
- * Get session from the store.
- * @private
- */
-
-function getSession(sessionId) {
-  var sess = this.sessions[sessionId]
-
-  if (!sess) {
-    return
-  }
-
-  // parse
-  sess = JSON.parse(sess)
-
-  if (sess.cookie) {
-    var expires = typeof sess.cookie.expires === 'string'
-      ? new Date(sess.cookie.expires)
-      : sess.cookie.expires
-
-    // destroy expired session
-    if (expires && expires <= Date.now()) {
-      delete this.sessions[sessionId]
-      return
+  get(id, callback) {
+    var v = this.store[id];
+    if (v && v.value) {
+      callback(null, v.value);
+    }
+    else {
+      callback("Session not exists", v);
     }
   }
-
-  return sess
+  set(id, value, callback) {
+    this.store[id] = { value: value, ttl: new Date(new Date().valueOf() + this.targetTTL + 1000) };
+    callback(null, this);
+  }
+  destroy(id, callback) {
+    var v = this.store[id];
+    if (v && v.value) {
+      delete this.store[id];
+      callback(null, v.value);
+    }
+    else {
+      callback("Session not exists", v);
+    }
+  }
 }
+
+module.exports = InMemorySessionStore;
