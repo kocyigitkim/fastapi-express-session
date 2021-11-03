@@ -1,7 +1,7 @@
 const InMemorySessionStore = require("./InMemorySessionStore");
 const uuid = require('uuid').v4;
 const { waitCallback } = require('../utils');
-
+const requestIp = require('request-ip');
 class SessionManager {
     constructor(store) {
         if (!store) store = new InMemorySessionStore();
@@ -12,7 +12,7 @@ class SessionManager {
     async use(req, res, next) {
         const _self = this;
         var sessionId = req.header("sessionid");
-        var ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+        var ip = requestIp.getClientIp(req);
         var userAgent = req.headers['user-agent'];
         var isNewSession = false;
         var isGranted = true;
@@ -42,7 +42,7 @@ class SessionManager {
             isNewSession = true;
         }
         res.on('finish', () => {
-            if (!req.session && req.sessionId) {
+            if ((!req.session || Object.keys(req.session).length == 0) && req.sessionId) {
                 waitCallback(_self.store, _self.store.destroy, sessionId);
             }
             else {
