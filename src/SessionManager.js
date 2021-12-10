@@ -12,7 +12,9 @@ class SessionManager {
     async use(req, res, next) {
         const _self = this;
         var sessionId = req.header("sessionid");
-        var ip = requestIp.getClientIp(req);
+        var ip = req.ip;
+        var isV6 = req.socket.remoteFamily === 'IPv6';
+
         var userAgent = req.headers['user-agent'];
         var isNewSession = false;
         var isGranted = true;
@@ -23,10 +25,15 @@ class SessionManager {
             var result = await waitCallback(_self.store, _self.store.get, sessionId);
             if (!result) {
                 isNewSession = true;
-                result = { session: {}, ip: ip, userAgent: userAgent };
+                result = { session: {}, ip: !isV6 ? ip : null, ipv6: isV6 ? ip : null, userAgent: userAgent };
             }
+            if (isV6 && !result.ipv6) {
+                result.ipv6 = ip;
+            }
+            result.userAgent = userAgent;
+
             req.session = result.session || {};
-            if (result && (result.ip != ip || result.userAgent != userAgent)) {
+            if (result && ((isV6 ? (result.ipv6 != ip) : (result.ip != ip)) || result.userAgent != userAgent)) {
                 isGranted = false;
                 req.session = {};
                 req.sessionId = uuid();
@@ -46,7 +53,7 @@ class SessionManager {
                 waitCallback(_self.store, _self.store.destroy, sessionId);
             }
             else {
-                waitCallback(_self.store, _self.store.set, sessionId, { session: req.session, ip: ip, userAgent: userAgent });
+                waitCallback(_self.store, _self.store.set, sessionId, result);
             }
         });
         req.sessionManager = _self;
