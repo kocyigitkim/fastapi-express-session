@@ -30,6 +30,9 @@ class SessionManager {
             if (isV6 && !result.ipv6) {
                 result.ipv6 = ip;
             }
+            if (!isV6 && !result.ip) {
+                result.ip = ip;
+            }
             result.userAgent = userAgent;
 
             req.session = result.session || {};
