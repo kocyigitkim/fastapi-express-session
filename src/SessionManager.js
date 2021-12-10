@@ -12,7 +12,7 @@ class SessionManager {
     async use(req, res, next) {
         const _self = this;
         var sessionId = req.header("sessionid");
-        var ip = req.socket.remoteAddress;
+        var ip = formatIP(req.socket.remoteAddress);
         var isV6 = checkIfValidIPV6(ip);
 
         var userAgent = req.headers['user-agent'];
@@ -68,6 +68,16 @@ function checkIfValidIPV6(str) {
 
     return regexExp.test(str);
 }
+function formatIP(str) {
+    if (!str) return null;
 
+    if (str === "::1") return "127.0.0.1";
+    if (
+        str === "::ffff:127.0.0.1" ||
+        str === "::ffff::1" ||
+        str.startsWith("::ffff")) return "127.0.0.1";
+
+    return str;
+}
 
 module.exports = SessionManager;
